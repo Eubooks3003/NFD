@@ -61,16 +61,20 @@ class Dataset:
       seed: random seed used to initialize the episode.
       episode: list of (obs, act, reward, info) tuples.
     """
-    color, depth, action, reward, info = [], [], [], [], []
+    color, depth, action, reward, info, segm = [], [], [], [], [], []
     for obs, act, r, i in episode:
       color.append(obs['color'])
+      obs_color = np.uint8(obs['color'])
+      print("Color Shape: ", obs_color.shape)
       depth.append(obs['depth'])
       action.append(act)
       reward.append(r)
+      segm.append(obs['segm'])
       info.append(i)
 
     color = np.uint8(color)
     depth = np.float32(depth)
+    segm = np.uint8(segm)
 
     def dump(data, field):
       field_path = os.path.join(self.path, field)
@@ -85,6 +89,7 @@ class Dataset:
     dump(action, 'action')
     dump(reward, 'reward')
     dump(info, 'info')
+    dump(segm, 'segm')
 
     self.n_episodes += 1
     self.max_seed = max(self.max_seed, seed)

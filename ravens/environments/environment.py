@@ -138,13 +138,31 @@ class Environment(gym.Env):
     p.setTimeStep(1. / hz)
 
     # If using --disp, move default camera closer to the scene.
+    print("Display: ", disp)
     if disp:
-      target = p.getDebugVisualizerCamera()[11]
-      p.resetDebugVisualizerCamera(
-          cameraDistance=1.1,
-          cameraYaw=90,
-          cameraPitch=-25,
-          cameraTargetPosition=target)
+        # Get the current camera's target position and other settings
+        camInfo = p.getDebugVisualizerCamera()
+        target = list(camInfo[11])  # Convert tuple to list for mutability
+
+        print("Original Camera Target Position:", target)
+
+        # Adjust the camera's target position to move the view to the right
+        target[0] += 0.2  # Increase x-coordinate; adjust this value as needed
+
+        # Reset the camera with the new target position
+        p.resetDebugVisualizerCamera(
+            cameraDistance=0.5,  # May need adjustment
+            cameraYaw=0,         # Keep the camera's yaw
+            cameraPitch=-89.9,   # Almost directly downwards
+            cameraTargetPosition=target)
+
+        # Fetch updated camera information to verify changes
+        updatedCamInfo = p.getDebugVisualizerCamera()
+        print("Updated Camera Info:", updatedCamInfo)
+
+        camera_data = self.get_camera_position_and_rotation()
+        print("Camera Position:", camera_data['position'])
+        print("Camera Rotation (Quaternion):", camera_data['rotation'])
 
     if task:
       self.set_task(task)
@@ -171,6 +189,44 @@ class Environment(gym.Env):
   #---------------------------------------------------------------------------
   # Standard Gym Functions
   #---------------------------------------------------------------------------
+
+  def get_camera_position_and_rotation(self):
+    camInfo = p.getDebugVisualizerCamera()
+    camera_distance = camInfo[10]
+    camera_yaw = camInfo[8]
+    camera_pitch = camInfo[9]
+    target_position = camInfo[11]
+    
+    # Calculate camera position based on target position, yaw, pitch, and distance
+    camera_position = self.calculate_camera_position(target_position, camera_distance, camera_yaw, camera_pitch)
+    
+    # Converting Euler angles to quaternion
+    roll = 0  # Assuming roll is 0 as it's not provided by getDebugVisualizerCamera
+    pitch = np.radians(camera_pitch)
+    yaw = np.radians(camera_yaw)
+    quaternion = p.getQuaternionFromEuler([roll, pitch, yaw])
+    
+    # Format the position and rotation for output
+    position = list(camera_position)
+    rotation = list(quaternion)
+    
+    return {
+        'position': position,
+        'rotation': rotation
+    }
+
+  def calculate_camera_position(self, target, distance, yaw, pitch):
+      from math import cos, sin, radians
+      # Convert angles from degrees to radians
+      yaw_rad = radians(yaw)
+      pitch_rad = radians(pitch)
+      
+      # Calculate the camera's Cartesian coordinates relative to the target
+      x = target[0] + distance * cos(pitch_rad) * sin(yaw_rad)
+      y = target[1] + distance * cos(pitch_rad) * cos(yaw_rad)
+      z = target[2] + distance * sin(pitch_rad)
+
+      return (x, y, z)
 
   def seed(self, seed=None):
     self._random = np.random.RandomState(seed)
@@ -397,11 +453,15 @@ class Environment(gym.Env):
 
   def _get_obs(self):
     # Get RGB-D camera image observations.
-    obs = {'color': (), 'depth': ()}
+
+    obs = {'color': (), 'depth': (), 'segm': ()}
     for config in self.agent_cams:
-      color, depth, _ = self.render_camera(config)
+      print("Position: ", config['position'])
+      print("Rotation: ", config['rotation'])
+      color, depth, segm = self.render_camera(config)
       obs['color'] += (color,)
       obs['depth'] += (depth,)
+      obs['segm'] += (segm,)
 
     return obs
 

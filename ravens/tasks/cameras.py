@@ -37,26 +37,38 @@ class RealSenseD415():
   right_rotation = (np.pi / 4.5, np.pi, 3 * np.pi / 4)
   right_rotation = p.getQuaternionFromEuler(right_rotation)
 
+  data_position = (0.5, 0, 0.3)
+  data_rotation = ( 0 , np.pi, -np.pi/2)
+  data_rotation = p.getQuaternionFromEuler(data_rotation)
+
+#       'image_size': image_size,
+#       'intrinsics': intrinsics,
+#       'position': front_position,
+#       'rotation': front_rotation,
+#       'zrange': (0.01, 10.),
+#       'noise': False
+#   }, {
+#       'image_size': image_size,
+#       'intrinsics': intrinsics,
+#       'position': left_position,
+#       'rotation': left_rotation,
+#       'zrange': (0.01, 10.),
+#       'noise': False
+#   }, {
+#       'image_size': image_size,
+#       'intrinsics': intrinsics,
+#       'position': right_position,
+#       'rotation': right_rotation,
+#       'zrange': (0.01, 10.),
+#       'noise': False
+#   },
   # Default camera configs.
-  CONFIG = [{
+  CONFIG = [
+  {
       'image_size': image_size,
       'intrinsics': intrinsics,
-      'position': front_position,
-      'rotation': front_rotation,
-      'zrange': (0.01, 10.),
-      'noise': False
-  }, {
-      'image_size': image_size,
-      'intrinsics': intrinsics,
-      'position': left_position,
-      'rotation': left_rotation,
-      'zrange': (0.01, 10.),
-      'noise': False
-  }, {
-      'image_size': image_size,
-      'intrinsics': intrinsics,
-      'position': right_position,
-      'rotation': right_rotation,
+      'position': data_position,
+      'rotation': data_rotation,
       'zrange': (0.01, 10.),
       'noise': False
   }]
