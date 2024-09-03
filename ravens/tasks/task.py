@@ -157,6 +157,15 @@ class Task():
       # Filter out matched objects.
       order = [i for i in order if nn_dists[i] > 0]
 
+      MAX_PICKING_DISTANCE = 0.5
+
+      # Filter out objects further than the maximum distance from any target
+      filtered_order = []
+      for i in order:
+          if nn_dists[i] <= MAX_PICKING_DISTANCE:
+              filtered_order.append(i)
+      order = filtered_order
+
       pick_mask = None
       for pick_i in order:
         pick_mask = np.uint8(obj_mask == objs[pick_i][0])

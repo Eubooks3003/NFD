@@ -54,45 +54,86 @@ class Dataset:
 
     self._cache = {}
 
+  def interpolate_poses(self, start_pose, end_pose, num_steps):
+      # Unpack the start and end poses
+      start_pos, start_quat = start_pose
+      end_pos, end_quat = end_pose
+
+      # Create position interpolation
+      positions = np.linspace(start_pos, end_pos, num=num_steps + 1)
+
+      # Combine positions and quaternions
+      interpolated_actions = []
+      for i in range(num_steps):
+          action = {
+              'pose0': ((positions[i]), [0, 0, 0 , 1]),
+              'pose1': (positions[i+1], [0, 0, 0 , 1])
+          }
+          interpolated_actions.append(action)
+
+      return interpolated_actions
+
   def add(self, seed, episode):
-    """Add an episode to the dataset.
+      """Add an episode to the dataset with sequences of observations.
 
-    Args:
-      seed: random seed used to initialize the episode.
-      episode: list of (obs, act, reward, info) tuples.
-    """
-    color, depth, action, reward, info, segm = [], [], [], [], [], []
-    for obs, act, r, i in episode:
-      color.append(obs['color'])
-      obs_color = np.uint8(obs['color'])
-      print("Color Shape: ", obs_color.shape)
-      depth.append(obs['depth'])
-      action.append(act)
-      reward.append(r)
-      segm.append(obs['segm'])
-      info.append(i)
+      Args:
+        seed: random seed used to initialize the episode.
+        episode: list of (obs_sequence, act, reward, info) tuples.
+      """
+      color, depth, action, reward, info, segm = [], [], [], [], [], []
+      for obs, act, r, i in episode:
+          # num_obs = len(obs_sequence)
+          # if num_obs > 1 and act is not None:
+          #     # Interpolate poses from act['pose0'] to act['pose1']
+          #     interpolated_actions = self.interpolate_poses(act['pose0'], act['pose1'], num_obs)
+          # else:
+          #     interpolated_actions = [act]  # No interpolation needed if only one obs
 
-    color = np.uint8(color)
-    depth = np.float32(depth)
-    segm = np.uint8(segm)
+          # for idx, obs in enumerate(obs_sequence):
+          #     color.append(np.uint8(obs['color']))
+          #     depth.append(obs['depth'])
+          #     segm.append(np.uint8(obs['segm']))
+          #     info.append(i)
+          # # print("Interpolated Actions: ", interpolated_actions)
+          # if interpolated_actions is not None:
+          #   for interpolated_action in interpolated_actions:
+          #     # print("Appending interpolation: ", interpolated_action)
+          #     action.append(interpolated_action)
+          # else:
+          #   print("Appending: ", act)
+          #   action.append(act)
+          # # action.append({'pose0': interpolated_actions[idx][0], 'pose1': interpolated_actions[idx][1]})
+          color.append(np.uint8(obs['color']))
+          depth.append(obs['depth'])
+          segm.append(np.uint8(obs['segm']))
+          info.append(i)
+          action.append(act)
+          reward.append(r)
+          # reward.extend([r / num_obs] * num_obs)  # Distribute reward evenly across observations
 
-    def dump(data, field):
-      field_path = os.path.join(self.path, field)
-      if not tf.io.gfile.exists(field_path):
-        tf.io.gfile.makedirs(field_path)
-      fname = f'{self.n_episodes:06d}-{seed}.pkl'  # -{len(episode):06d}
-      with tf.io.gfile.GFile(os.path.join(field_path, fname), 'wb') as f:
-        pickle.dump(data, f)
+      # Processing and saving the accumulated data
+      color = np.array(color, dtype=np.uint8)
+      depth = np.array(depth, dtype=np.float32)
+      segm = np.array(segm, dtype=np.uint8)
 
-    dump(color, 'color')
-    dump(depth, 'depth')
-    dump(action, 'action')
-    dump(reward, 'reward')
-    dump(info, 'info')
-    dump(segm, 'segm')
+      def dump(data, field):
+          field_path = os.path.join(self.path, field)
+          if not tf.io.gfile.exists(field_path):
+              tf.io.gfile.makedirs(field_path)
+          fname = f'{self.n_episodes:06d}-{seed}.pkl'
+          with tf.io.gfile.GFile(os.path.join(field_path, fname), 'wb') as f:
+              pickle.dump(data, f)
 
-    self.n_episodes += 1
-    self.max_seed = max(self.max_seed, seed)
+      dump(color, 'color')
+      dump(depth, 'depth')
+      dump(action, 'action')
+      dump(reward, 'reward')
+      dump(info, 'info')
+      dump(segm, 'segm')
+
+      self.n_episodes += 1
+      self.max_seed = max(self.max_seed, seed)
+
 
   def set(self, episodes):
     """Limit random samples to specific fixed set."""

@@ -172,6 +172,7 @@ class Environment(gym.Env):
     """Return true if objects are no longer moving."""
     v = [np.linalg.norm(p.getBaseVelocity(i)[0])
          for i in self.obj_ids['rigid']]
+    # print("Velocities: ", np.array(v))
     return all(np.array(v) < 5e-3)
 
   def add_object(self, urdf, pose, category='rigid'):
@@ -277,7 +278,7 @@ class Environment(gym.Env):
     obs, _, _, _ = self.step()
     return obs
 
-  def step(self, action=None):
+  def step(self, action=None, obs_interval = 4):
     """Execute action with specified primitive.
 
     Args:
@@ -286,18 +287,28 @@ class Environment(gym.Env):
     Returns:
       (obs, reward, done, info) tuple containing MDP step data.
     """
+    obs_sequence = []
     if action is not None:
-      timeout = self.task.primitive(self.movej, self.movep, self.ee, **action)
+        timeout = self.task.primitive(self.movej, self.movep, self.ee, **action)
 
-      # Exit early if action times out. We still return an observation
-      # so that we don't break the Gym API contract.
-      if timeout:
-        obs = self._get_obs()
-        return obs, 0.0, True, self.info
+        # Exit early if action times out. We still return an observation
+        # so that we don't break the Gym API contract.
+        if timeout:
+            obs = self._get_obs()
+            print("Timeout observation appended")
+            obs_sequence.append(obs)
+            return obs, 0.0, True, self.info
 
+    step_count = 0
     # Step simulator asynchronously until objects settle.
+    # p.stepSimulation()
     while not self.is_static:
-      p.stepSimulation()
+        # print("Entering Step Simulation")
+        p.stepSimulation()
+        # if step_count % obs_interval == 0:
+        #   print("Added observation to obs_sequence")
+        #   obs_sequence.append(self._get_obs())
+        # step_count += 1
 
     # Get task rewards.
     reward, info = self.task.reward() if action is not None else (0, {})
@@ -306,9 +317,11 @@ class Environment(gym.Env):
     # Add ground truth robot state into info.
     info.update(self.info)
 
-    obs = self._get_obs()
+    # Always append the final observation
+    # print("Appending final observation")
+    obs_sequence.append(self._get_obs())
 
-    return obs, reward, done, info
+    return self._get_obs(), reward, done, info
 
   def close(self):
     if self._egl_plugin is not None:
@@ -456,8 +469,8 @@ class Environment(gym.Env):
 
     obs = {'color': (), 'depth': (), 'segm': ()}
     for config in self.agent_cams:
-      print("Position: ", config['position'])
-      print("Rotation: ", config['rotation'])
+      # print("Position: ", config['position'])
+      # print("Rotation: ", config['rotation'])
       color, depth, segm = self.render_camera(config)
       obs['color'] += (color,)
       obs['depth'] += (depth,)

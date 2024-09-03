@@ -2,6 +2,7 @@ import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import shutil
 
 def load_pkl_file(filepath):
     """Load a pickle file and return its content."""
@@ -37,6 +38,12 @@ def save_images_from_cameras(images, output_folder, index, num_images_per_camera
 
 def process_folder(input_folder, output_folder):
     """Process all .pkl files in the specified folder."""
+    # Check if the output folder exists and delete it if it does
+    if os.path.exists(output_folder):
+        shutil.rmtree(output_folder)
+    # Create a new empty output folder
+    os.makedirs(output_folder)
+
     index = 0
     for file in os.listdir(input_folder):
         if file.endswith('.pkl'):
@@ -45,12 +52,17 @@ def process_folder(input_folder, output_folder):
             print(f"Loaded {len(images)} images from {file}.")
             print("Images Size: ", images.shape)
             save_images_from_cameras(images, output_folder, index)
-        
-        index += 1
+            index += 1
+
 
 # Specify the input and output directories
+# Smaller Actions
 input_folder = '/home/ellina/Working/NFD/sweeping-piles-test/color'  # Folder containing .pkl files
-output_folder = '/home/ellina/Working/NFD/output_images_train'             # Folder to save processed images
+output_folder = '/home/ellina/Working/NFD/output_images_test'             # Folder to save processed images
+
+# 50 Blocks
+# input_folder = '/home/ellina/Working/NFD/sweeping-piles-train/color'  # Folder containing .pkl files
+# output_folder = '/home/ellina/Working/NFD/output_images_train'             # Folder to save processed images
 
 # Process all .pkl files in the specified folder
 process_folder(input_folder, output_folder)

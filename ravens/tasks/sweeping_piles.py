@@ -45,7 +45,8 @@ class SweepingPiles(Task):
     # Add pile of small blocks.
     obj_pts = {}
     obj_ids = []
-    for _ in range(50):
+    num_blocks = 50
+    for _ in range(num_blocks):
       rx = self.bounds[0, 0] + 0.15 + np.random.rand() * 0.2
       ry = self.bounds[1, 0] + 0.4 + np.random.rand() * 0.2
       xyz = (rx, ry, 0.01)
@@ -61,3 +62,4 @@ class SweepingPiles(Task):
     # self.goals.append((goal, metric))
     self.goals.append((obj_ids, np.ones((50, 1)), [zone_pose], True, False,
                        'zone', (obj_pts, [(zone_pose, zone_size)]), 1))
+                       
