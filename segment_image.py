@@ -36,12 +36,15 @@ def fill_goal_region(mask_green):
 
     return filled_mask, True
 
+
+
 def segment_color_objects(image_path, output_path_red, output_path_green):
     image = cv2.imread(image_path)
     if image is None:
         print(f"Failed to load image at {image_path}")
         return
 
+    print(image)
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
     # Define thresholds for red and green

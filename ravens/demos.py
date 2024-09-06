@@ -317,14 +317,58 @@ def fill_goal_region(mask_green):
 
     return final_mask
 
+def visualize_hsv_channels(hsv_image, output_folder='/home/ellina/Working/NFD/overlay_images', file_name='color_tensor.png'):
+    """
+    Visualize the separate HSV channels to help tune the red color thresholds.
+    :param hsv_image: Input HSV image.
+    """
+    h_channel, s_channel, v_channel = cv2.split(hsv_image)
 
-def segment_color_objects(image):
+    plt.figure(figsize=(12, 6))
+
+    plt.subplot(1, 3, 1)
+    plt.imshow(h_channel, cmap='hsv')
+    plt.title('Hue Channel')
+
+    plt.subplot(1, 3, 2)
+    plt.imshow(s_channel, cmap='gray')
+    plt.title('Saturation Channel')
+
+    plt.subplot(1, 3, 3)
+    plt.imshow(v_channel, cmap='gray')
+    plt.title('Value Channel')
+
+    output_path = os.path.join(output_folder, file_name)
+    plt.savefig(output_path, bbox_inches='tight', pad_inches=0)
+    plt.close()  # Close the plot to free memory
+    print(f"HSV channel visualization saved to {output_path}")
+
+def numpy_array_to_bgr_image(np_array):
     """
-    Segment the red color objects from the image and return the mask.
-    :param image: Input image as a NumPy array (BGR format).
-    :return: Red mask as a NumPy array.
+    Convert a NumPy array in RGB format to a BGR format, and ensure it is in the correct dtype.
+    Expects the array to be in the range [0, 1] or [0, 255]. Converts it to uint8.
+    
+    :param np_array: Input NumPy array in (H, W, C) format, possibly in RGB.
+    :return: NumPy array in (H, W, C) format in BGR color space, with dtype uint8.
     """
-    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    # Check if the image is in float format and needs conversion to uint8
+    if np_array.max() <= 1.0:
+        np_array = (np_array * 255).astype(np.uint8)  # Scale to [0, 255]
+    else:
+        np_array = np_array.astype(np.uint8)
+
+    # Convert from RGB (default NumPy array format) to BGR (OpenCV format)
+    image_bgr = cv2.cvtColor(np_array, cv2.COLOR_RGB2BGR)
+
+    return image_bgr
+
+def segment_color_objects_from_numpy(np_array):
+
+    # Convert the NumPy array to a format compatible with OpenCV
+    image_bgr = numpy_array_to_bgr_image(np_array)
+
+    # Proceed with the same segmentation code
+    hsv = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV)
 
     # Define thresholds for red and green
     lower_red1 = (0, 70, 50)
@@ -347,6 +391,20 @@ def segment_color_objects(image):
 
     return mask_red, mask_green
 
+def check_red_segmentation(mask_red):
+    """
+    Check if the red mask segments anything by counting the number of non-zero pixels.
+    :param mask_red: Red mask as a NumPy array.
+    :return: Boolean indicating if red objects are detected.
+    """
+    red_pixel_count = np.count_nonzero(mask_red)
+    if red_pixel_count > 0:
+        print(f"Red segmentation detected {red_pixel_count} red pixels.")
+        return True
+    else:
+        print("No red objects detected.")
+        return False
+
 def transform_color(color, image_size):
     """
     Transform the color array into a PyTorch tensor with the necessary preprocessing.
@@ -359,7 +417,18 @@ def transform_color(color, image_size):
     color = np.array(color, dtype=np.uint8).reshape(color_image_size)
     color = color[:, :, :3]  # Remove alpha channel if it exists (retain only RGB)
 
-    mask_red, mask_green = segment_color_objects(color)
+    # print("Color: ", color)
+    # print("Color Shape; ", color.shape)
+
+    output_folder = '/home/ellina/Working/NFD/overlay_images'
+
+    visualize_and_save_tensor(color, output_folder, file_name='color_tensor.png')
+
+    mask_red, mask_green = segment_color_objects_from_numpy(color)
+
+    visualize_and_save_tensor(mask_red, output_folder, file_name='red_mask.png')
+    visualize_and_save_tensor(mask_green, output_folder, file_name='green_mask.png')
+    check_red_segmentation(mask_red)
 
     print("Red Mask Shape: ", mask_red.shape)
     mask_red_pil = Image.fromarray(mask_red)
@@ -371,6 +440,8 @@ def transform_color(color, image_size):
     ])
 
     red_mask_tensor = transform(mask_red_pil)
+
+    # print("red Mask Tensor: ", red_mask_tensor)
 
     return red_mask_tensor
 def fill_polygon_on_canvas(canvas, image_corners):
@@ -522,8 +593,110 @@ def l_goal(sT, goal_mask, goal_edf_mask, alpha1=1.0, alpha2=2.0):
 
     return loss
 
+import os
+import torch
+from torchvision.utils import save_image
+import numpy as np
 
-def optimize_trajectory_no_obstacles(model, x0, G, T, learning_rate=1e-2, max_iters=1000, device = None):
+def overlay_colored_images_and_save(combined_image, goal_mask, output_folder, file_name='overlay.png', alpha=0.5):
+    """
+    Saves the overlay of the combined_image with the goal_mask, each in a different color using torchvision's save_image.
+
+    Args:
+        combined_image (torch.Tensor): Tensor of shape (3, H, W) representing 3 grayscale images.
+        goal_mask (torch.Tensor): Tensor of shape (H, W) representing the goal mask.
+        output_folder (str): Folder to save the images.
+        file_name (str): Name of the file to save the image as.
+        alpha (float): Transparency level for the overlay. 0 means fully transparent, 1 means fully opaque.
+    """
+    
+    # Ensure output folder exists
+    os.makedirs(output_folder, exist_ok=True)
+
+    # Ensure combined_image and goal_mask are on CPU
+    combined_image = combined_image.detach().cpu()
+    goal_mask = goal_mask.detach().cpu()
+
+    # Extract the individual grayscale images from combined_image
+    img1 = combined_image[0]  # First grayscale image
+    img2 = combined_image[1]  # Second grayscale image
+    img3 = combined_image[2]  # Third grayscale image
+
+    # Normalize each image for visualization
+    def normalize_img(img):
+        return (img - img.min()) / (img.max() - img.min())
+
+    img1 = normalize_img(img1)
+    img2 = normalize_img(img2)
+    img3 = normalize_img(img3)
+
+    # Create a 3-channel colored image where each channel represents one of the combined images
+    colored_image = torch.stack([img1, img2, img3], dim=0)
+
+    # Create a mask overlay in yellow (red + green)
+    goal_mask_colored = torch.stack([goal_mask, goal_mask, torch.zeros_like(goal_mask)], dim=0)  # Red + Green = Yellow
+
+    # Blend the goal mask into the colored image with the specified alpha
+    final_image = (1 - alpha) * colored_image + alpha * goal_mask_colored
+
+    # Save the final blended image
+    output_path = os.path.join(output_folder, file_name)
+    save_image(final_image, output_path)
+
+    print(f"Overlay saved to {output_path}")
+
+import os
+import torch
+from torchvision.utils import save_image
+import matplotlib.pyplot as plt
+import numpy as np
+def visualize_and_save_tensor(color_tensor, output_folder='/home/ellina/Working/NFD/overlay_images', file_name='color_tensor.png'):
+    """
+    Visualizes and saves the single-channel color_tensor.
+    
+    Args:
+        color_tensor (torch.Tensor or np.ndarray): Tensor of shape (1, H, W) or NumPy array of shape (H, W).
+        output_folder (str): Folder to save the images.
+        file_name (str): Name of the file to save the image as.
+    """
+
+    # Ensure output folder exists
+    os.makedirs(output_folder, exist_ok=True)
+
+    # Case 1: If color_tensor is a PyTorch tensor
+    if isinstance(color_tensor, torch.Tensor):
+        # If it's a PyTorch tensor, ensure it's detached and on the CPU
+        color_tensor = color_tensor.detach().cpu()
+
+        # Check if it's a single-channel tensor of shape (1, H, W)
+        if color_tensor.dim() == 3 and color_tensor.shape[0] == 1:
+            output_path = os.path.join(output_folder, file_name)
+            # Save using torchvision's save_image for PyTorch tensors
+            save_image(color_tensor, output_path)
+            print(f"Color tensor saved to {output_path}")
+
+        # Convert to NumPy for visualization
+        color_tensor = color_tensor.squeeze(0).numpy()  # Convert (1, H, W) -> (H, W)
+
+    # Case 2: If color_tensor is a NumPy array
+    elif isinstance(color_tensor, np.ndarray):
+        # If it's a NumPy array, ensure it's of shape (H, W) for visualization
+        if color_tensor.ndim == 3 and color_tensor.shape[0] == 1:
+            color_tensor = np.squeeze(color_tensor, axis=0)  # Convert (1, H, W) -> (H, W)
+
+        # Optionally save using PIL if it's a NumPy array
+        output_path = os.path.join(output_folder, file_name)
+        plt.imsave(output_path, color_tensor, cmap='gray')
+        print(f"Color array saved to {output_path}")
+
+    # Visualize the color_tensor (whether it's a NumPy array or a Tensor converted to NumPy)
+    plt.figure(figsize=(6, 6))
+    plt.imshow(color_tensor, cmap='gray')
+    plt.title('Color Tensor Visualization')
+    plt.axis('off')
+
+
+def optimize_trajectory_no_obstacles(model, x0, G, T, learning_rate=1e-2, max_iters=1000, num_iteration = 0, device = None):
     """
     Optimize the trajectory to minimize the objective function with no obstacles.
     
@@ -537,9 +710,11 @@ def optimize_trajectory_no_obstacles(model, x0, G, T, learning_rate=1e-2, max_it
     """
     # Initialize trajectory
     xt = x0
+    output_folder = '/home/ellina/Working/NFD/overlay_images'
 
     image_size = (480, 640)
     color_tensor = transform_color(xt, image_size)
+    visualize_and_save_tensor(color_tensor, output_folder, file_name=f'color_tensor_{num_iteration}.png')
 
     pose0_series = [torch.tensor([0.4, 0.0, 0.0], requires_grad=True) for _ in range(T)]
     pose1_series = [torch.tensor([0.5, 0.0, 0.0], requires_grad=True) for _ in range(T)]
@@ -549,9 +724,11 @@ def optimize_trajectory_no_obstacles(model, x0, G, T, learning_rate=1e-2, max_it
     rect_height = 50
     rect_width = 100
 
+
+    final_combined_image = None
     for iter in range(40):
         optimizer.zero_grad()
-        action_tensors = plot_trajectory(pose0_series[0], pose1_series[1], rect_height, rect_width)
+        action_tensors = plot_trajectory(pose0_series[0], pose1_series[0], rect_height, rect_width)
         combined_image = torch.cat([color_tensor, action_tensors[0], action_tensors[1]], dim=0)
         goal_mask, edf_mask = create_goal_mask_edf(G, device)
         # Initialize the total loss
@@ -579,7 +756,6 @@ def optimize_trajectory_no_obstacles(model, x0, G, T, learning_rate=1e-2, max_it
               combined_image = torch.cat([combined_image, action_tensors[0], action_tensors[1]], dim=0)
               combined_image = combined_image.unsqueeze(0)
 
-
               st_next = model(combined_image)
               combined_image = st_next  # Update the state for the next time step
 
@@ -589,14 +765,20 @@ def optimize_trajectory_no_obstacles(model, x0, G, T, learning_rate=1e-2, max_it
 
         total_loss.backward()
 
-
         # Update the trajectory with the optimizer
         optimizer.step()
+
 
         # Optional: Print the loss at each iteration
         if iter % 10 == 0:
             print(f"Iteration {iter}, Total Loss: {total_loss.item()}")
 
+    action_tensors = plot_trajectory(pose0_series[0], pose1_series[0], rect_height, rect_width)
+    combined_image = torch.cat([color_tensor, action_tensors[0], action_tensors[1]], dim=0)
+
+    print("Combined Image Shape: ", combined_image.shape)
+
+    overlay_colored_images_and_save(combined_image, goal_mask, output_folder, file_name=f'overlay_{num_iteration}.png', alpha=0.5)
     return [pose0_series[0], pose1_series[0]]
 
 def debug():
@@ -682,12 +864,13 @@ class Agent:
             T=self.T,
             learning_rate=self.learning_rate,
             max_iters=self.max_iters,
+            num_iteration = self.step_index,
             device = self.device
         )
-        self.step_index = 0
+        self.step_index += 1
 
     def act(self, obs, info):
-        if self.optimized_trajectory is None or self.step_index >= len(self.optimized_trajectory):
+        if self.optimized_trajectory is None:
             # If the trajectory hasn't been optimized yet or we're out of steps, return a default action.
             return np.zeros((2,))  # Replace with a default action for your environment
 
@@ -717,7 +900,7 @@ def main(unused_argv):
 
   # Initialize scripted oracle agent and dataset.
   print("Continuous: ", FLAGS.continuous)
-#   agent = task.oracle(env, steps_per_seg=FLAGS.steps_per_seg)
+  agent = task.oracle(env, steps_per_seg=FLAGS.steps_per_seg)
 
   checkpoint_path = '/home/ellina/Working/NFD/micro-actions/model_checkpoint_best.pth'
 
@@ -777,8 +960,8 @@ def main(unused_argv):
 
     # Only save completed demonstrations.
     # TODO(andyzeng): add back deformable logic.
-    if total_reward > 0.99:
-      dataset.add(seed, episode)
+    # if total_reward > 0.99:
+    dataset.add(seed, episode)
 
 if __name__ == '__main__':
 #   test_gradient_flow()
